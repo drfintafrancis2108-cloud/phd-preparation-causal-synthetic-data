@@ -12,7 +12,7 @@ The work therefore focuses on understanding how data modification, anonymization
 
 ---
 
-# 📖 Methodological Handbook
+# Methodological Handbook
 
 I have developed a methodological handbook as part of my preparation. It currently contains eight chapters covering the main methodological areas relevant to the proposed PhD research.
 
