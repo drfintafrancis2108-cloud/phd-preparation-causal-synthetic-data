@@ -18,84 +18,106 @@ I have developed a methodological handbook as part of my preparation. It current
 
 ### Current chapters
 
-1. **Causal Inference and Causal Frameworks**
-   - Causal estimands
-   - DAGs
-   - Confounding
-   - Mediation
-   - Colliders
-   - Identification
-   - Causal estimation
+1. Causal Inference and Causal Frameworks
+Topics include:
 
-2. **Causality and Machine Learning**
-   - Machine learning in causal inference
-   - Prediction versus causal inference
-   - Causal forests
-   - Tree-based approaches
-   - Machine-learning-based nuisance estimation
+Causal questions and causal estimands
+Directed Acyclic Graphs (DAGs)
+Confounding
+Mediation
+Colliders
+Backdoor paths
+Identification
+Causal assumptions
+Causal estimation
 
-3. **Synthetic Data**
-   - Motivation for synthetic data
-   - Types of synthetic data
-   - Synthetic data generation
-   - Applications in health research
-   - Advantages and limitations
+2. Methods for Causal Estimation
+Topics include:
 
-4. **Synthetic Data Generation Methods**
-   - Parametric synthesis
-   - CART
-   - Conditional inference trees (`ctree`)
-   - Random Forest
-   - Bayesian Networks
-   - `synthpop`
-   - `bnlearn`
-   - Generative approaches
+Regression adjustment
+Stratification
+Matching
+Propensity scores
+Inverse Probability of Treatment Weighting (IPTW)
+G-computation
+Doubly robust estimation
+Targeted Maximum Likelihood Estimation (TMLE)
 
-5. **Simulation Studies**
-   - Principles of simulation studies
-   - Data-generating mechanisms
-   - Confounding structures
-   - Treatment and outcome generation
-   - Simulation-based comparison of methods
-   - Evaluation of synthetic data
+3. Machine Learning for Causal Inference
+Topics include:
 
-6. **Privacy–Utility Trade-off**
-   - Anonymization
-   - Quasi-identifiers
-   - Re-identification risk
-   - k-anonymity
-   - Privacy metrics
-   - Statistical utility
-   - Privacy–utility trade-off
+Prediction versus causal inference
+Machine learning in causal inference
+Tree-based approaches
+Causal forests
+Machine-learning-based nuisance estimation
+Relationship between prediction and causal effect estimation
 
-7. **Causal Utility**
-   - Statistical utility versus causal utility
-   - Preservation of causal estimands
-   - ATE preservation
-   - Regression adjustment
-   - G-computation
-   - Inverse Probability of Treatment Weighting (IPTW)
-   - Propensity-score distributions
-   - Causal effect comparison between real and synthetic data
+4. Synthetic Data Generation
+Topics include:
 
-8. **Causal Mechanism Preservation**
-   - Preservation of causal relationships
-   - Treatment assignment mechanisms
-   - Outcome-generating mechanisms
-   - Covariate relationships
-   - Causal graphs
-   - Distinguishing statistical similarity from causal similarity
+Motivation for synthetic data
+Synthetic data generation
+Parametric approaches
+CART
+Conditional inference trees (ctree)
+Random Forest
+Bayesian Networks
+synthpop
+bnlearn
+Generative approaches
 
-### Handbook
+5. Simulation Studies
+Topics include:
 
-The complete handbook is available here:
+Principles of simulation studies
+Data-generating mechanisms
+Covariates
+Treatment assignment
+Outcomes
+Confounding structures
+Simulation-based methodological evaluation
+Comparing real and synthetic data under controlled conditions
 
-**[Read the PhD Methodological Preparation Handbook](./PhD_Preparation_Handbook.pdf)**
+6. Causal Utility and Causal Mechanism Preservation
+Topics include:
 
-The handbook is a living document and will be updated as my methodological preparation develops.
+Statistical utility versus causal utility
+Preservation of causal estimands
+ATE preservation
+Regression adjustment
+G-computation
+IPTW
+Propensity-score distributions
+Causal effect comparison
+Treatment-assignment mechanisms
+Outcome-generating mechanisms
+Preservation of causal relationships
+Distinguishing statistical similarity from causal similarity
 
----
+7. Privacy–Utility Trade-off in Synthetic and Anonymized Data
+Topics include:
 
+Privacy and data protection
+Anonymization
+Quasi-identifiers
+Re-identification risk
+k-anonymity
+Privacy metrics
+Statistical utility
+Information loss
+Privacy–utility trade-offs
+
+8. Anonymization of Datasets
+Topics include:
+
+Data anonymization
+Identification of quasi-identifiers
+Generalization
+Suppression
+Re-identification risk
+Privacy-preserving data publishing
+Evaluation of anonymized data
 # R Implementations
 
 The repository contains practical R implementations corresponding to the methodological concepts studied in the handbook.
@@ -151,7 +173,6 @@ The objective is to investigate whether synthetic data preserve the causal concl
 
 The methodological preparation is organized around the following framework:
 
-```text
 Data Generation
       ↓
 Synthetic / Anonymized Data
@@ -165,3 +186,30 @@ Causal Utility
 Causal Mechanism Preservation
       ↓
 Overall Privacy–Utility–Causal Utility Trade-off
+
+The reporsitory structure
+
+├── README.md
+│
+├── PhD_Preparation_Handbook.pdf
+│
+├── Chapter 1_ Causal Inference.pdf
+├── Chapter 2_ Methods for Causal Estimation.pdf
+├── Chapter3_ Machine Learning for causal Inference.docx
+├── Chapter 4_ Synthetic Data Generation.pdf
+├── Chapter 5_ ML for Casual Inference .pdf
+├── Chapter 6_ Causal utility and causal mechanism preservation.pdf
+├── Chapter 7_ Privacy Utility trade off in Synthetic and anonymized datasets.pdf
+├── Chapter 8_ Anonymization of datasets .pdf
+│
+├── causal_1.Rmd
+├── causal_2.Rmd
+├── causal_3.Rmd
+│
+├── syn_1.Rmd
+├── syn_2.Rmd
+│
+├── Simulation_Bayesian.Rmd
+├── Bayesian_learning.Rmd
+│
+└── privacy utility.Rmd
