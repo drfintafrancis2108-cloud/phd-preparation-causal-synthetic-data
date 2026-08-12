@@ -1,0 +1,448 @@
+---
+title: "syn_2"
+author: "Finta_Francis_R_project"
+date: "2026-07-31"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(synthpop)
+library(readr)
+library(pROC)
+library(partykit)
+
+## Here we are trying to explore CTree
+
+## First we will load the dataset GlaucomaM
+head(GlaucomaM)
+
+str(GlaucomaM)
+
+table(GlaucomaM$Class)
+```
+Now let us create a Ctree
+
+```{r chunk1}
+gtree <- ctree(Class ~ .,
+  data = GlaucomaM)
+
+gtree
+```
+
+## Now et us dive deep into the dataset
+
+```{r chunk2}
+plot(gtree)
+
+info_node(node_party(gtree))
+
+split_node(node_party(gtree))
+
+## Let us visualize the split
+
+plot(
+  GlaucomaM$vari,
+  as.numeric(GlaucomaM$Class),
+  xlab="vari",
+  ylab="Class"
+)
+
+abline(v = 0.059)
+```
+Now let us contro alpha a bit more 
+
+```{r chunk3}
+gtree2 <- ctree(
+  Class ~ .,
+  data = GlaucomaM,
+  control = ctree_control(alpha = 0.001)
+)
+
+plot(gtree2)
+
+```
+
+Let us understand the alogorithm better
+
+```{r chunk4}
+set.seed(123)
+
+sim <- data.frame(
+  age = rnorm(200, 50, 10),
+  biomarker = rnorm(200),
+  treatment = rbinom(200, 1, 0.5)
+)
+
+sim$outcome <- ifelse(
+  sim$biomarker + sim$treatment > 0,
+  "Disease",
+  "Normal"
+)
+
+sim$outcome <- factor(sim$outcome)
+
+head(sim)
+
+table(sim$outcome)
+
+tree_default <- ctree(
+  outcome ~ .,
+  data = sim
+)
+
+tree_default
+plot(tree_default)
+
+nodeids(tree_default)
+
+## Let us check the child nodes
+info_node(
+  node_party(tree_default), id = 2
+)
+
+## predict the nodes
+predict(
+  tree_default
+)
+
+predict(
+  tree_default,
+  type="prob"
+)
+
+predict(
+  tree_default,
+  type="node"
+)
+
+## Matrix
+
+table(
+  predict(tree_default),
+  sim$outcome
+)
+
+## misclassification rate
+mean(
+  predict(tree_default) != sim$outcome
+)
+```
+
+
+## Now let us understand the test control
+
+```{r chunk5}
+
+tree_max <- ctree(
+  outcome ~ .,
+  data = sim,
+  control = ctree_control(
+    teststat = "max"
+  )
+)
+
+tree_max
+
+plot(tree_max)
+```
+
+## Now let us use :
+##. Uses: c quad =(t−μ)Σ −1(t−μ) T
+
+```{r chunk6}
+tree_quad <- ctree(
+  outcome ~ .,
+  data = sim,
+  control = ctree_control(
+    teststat = "quad"
+  )
+)
+
+tree_quad
+
+plot(tree_quad)
+```
+```{r chunk7}
+tree_bonf <- ctree(
+  outcome ~ .,
+  data = sim,
+  control = ctree_control(
+    testtype = "Bonferroni"
+  )
+)
+
+plot(tree_bonf)
+```
+Now let us look into random forest genration
+
+```{r random forest}
+
+data(iris)
+
+data_iris <- iris
+
+set.seed(213456)
+library(synthpop)
+
+set.seed(213456)
+
+synth_cart <- syn(
+  data_iris,
+  method = "cart",
+  m = 1
+)
+
+cart_data <- synth_cart$syn
+
+head(cart_data)
+```
+
+
+## Now let us create the same dataset using random forest
+
+```{r random forest1}
+set.seed(213456)
+
+synth_rf <- syn(
+  data_iris,
+  method = "rf",
+  m = 1
+)
+
+rf_data <- synth_rf$syn
+
+head(rf_data)
+```
+
+# Now let us compare the statistical utlitiy in this models
+
+```{r stats}
+## First we will look into the summary 
+
+summary(cart_data)
+summary(rf_data)
+## This seems almost identical to the original dataset
+
+summary(data_iris)
+
+## Now let us compare the means 
+
+library(dplyr)
+
+compare_means <- data.frame(
+ Variable = c(
+ "Sepal.Length",
+ "Sepal.Width",
+ "Petal.Length",
+ "Petal.Width"
+ ),
+
+Original = sapply(
+ data_iris[,1:4],
+ mean
+ ),
+
+CART = sapply(
+ cart_data[,1:4],
+ mean
+ ),
+
+RF = sapply(
+ rf_data[,1:4],
+ mean
+ )
+)
+
+compare_means
+```
+## ## Now we will compare the SD
+
+```{r stats_SD}
+library(dplyr)
+compare_sd <- data.frame(
+ Variable = c(
+ "Sepal.Length",
+ "Sepal.Width",
+ "Petal.Length",
+ "Petal.Width"
+ ),
+
+Original = sapply(
+ data_iris[,1:4],
+ sd
+ ),
+
+CART = sapply(
+ cart_data[,1:4],
+ sd
+ ),
+
+RF = sapply(
+ rf_data[,1:4],
+ sd
+ )
+)
+
+compare_sd
+```
+
+##  Now let us compare them graphically
+
+```{r graphs}
+library(tidyverse)
+
+original <- data_iris %>%
+  mutate(Source = "Original")
+
+cart <- cart_data %>%
+  mutate(Source = "CART")
+
+rf <- rf_data %>%
+  mutate(Source = "Random Forest")
+
+
+combined <- bind_rows(
+  original,
+  cart,
+  rf
+)
+
+
+## Then plot it using ggplot
+library(ggplot2)
+
+combined_long <- combined %>%
+  pivot_longer(
+    cols = 1:4,
+    names_to = "Variable",
+    values_to = "Value"
+  )
+
+
+ggplot(
+  combined_long,
+  aes(
+    x = Value,
+    fill = Source
+  )
+) +
+  geom_density(alpha = 0.4) +
+  facet_wrap(
+    ~Variable,
+    scales = "free"
+  ) +
+  theme_bw() +
+  labs(
+    title = "Distribution comparison",
+    x = NULL,
+    y = "Density"
+  )
+```
+
+## Let us create some box plots
+
+```{r graphs2}
+ggplot(
+  combined_long,
+  aes(
+    x = Source,
+    y = Value
+  )
+) +
+  geom_boxplot() +
+  facet_wrap(
+    ~Variable,
+    scales = "free"
+  ) +
+  theme_bw() +
+  labs(
+    title = "Boxplot comparison of synthetic and original data"
+  )
+```
+## Mean preservation plot
+
+```{r graphs3}
+mean_comparison <- combined_long %>%
+  group_by(Source, Variable) %>%
+  summarise(
+    Mean = mean(Value),
+    .groups="drop"
+  )
+
+
+ggplot(
+  mean_comparison,
+  aes(
+    x = Variable,
+    y = Mean,
+    group = Source,
+    color = Source
+  )
+) +
+  geom_point(size=3) +
+  geom_line() +
+  theme_bw() +
+  labs(
+    title="Mean preservation across datasets"
+  )
+```
+PCA plot
+```{r graphs4}
+library(ggfortify)
+
+pca_input <- combined %>%
+  dplyr::select(
+    Sepal.Length,
+    Sepal.Width,
+    Petal.Length,
+    Petal.Width
+  )
+
+
+pca_result <- prcomp(
+  pca_input,
+  scale.=TRUE
+)
+
+
+autoplot(
+  pca_result,
+  data=combined,
+  colour="Source"
+) +
+theme_bw() +
+labs(
+ title="PCA comparison of original and synthetic datasets"
+)
+```
+```{r stats4}
+cor_real <- cor(data_iris[,1:4])
+
+cor_cart <- cor(cart_data[,1:4])
+
+cor_rf <- cor(rf_data[,1:4])
+
+
+difference_cart <- abs(
+  cor_real - cor_cart
+)
+
+difference_rf <- abs(
+  cor_real - cor_rf
+)
+
+ks.test(
+ data_iris$Sepal.Length,
+ cart_data$Sepal.Length
+)
+
+ks.test(
+ data_iris$Sepal.Length,
+ rf_data$Sepal.Length
+)
+
+
+```
+

@@ -1,0 +1,378 @@
+---
+title: "Evaluation of Synthetic Healthcare Data"
+author: "Finta_Francis_R_project"
+date: "2026-08-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+## First we will load all the necessary packages
+
+library(tidyverse)
+
+library(synthpop)
+
+library(partykit)
+
+library(randomForest)
+
+library(bnlearn)
+
+library(pROC)
+
+library(cobalt)
+
+library(ggplot2)
+
+###########################################################
+## Load packages
+###########################################################
+
+library(tidyverse)
+library(synthpop)
+library(partykit)
+library(randomForest)
+library(bnlearn)
+```
+Now we will load the dataset 
+
+```{r datasets}
+library(readr)
+steam <- read_csv("Downloads/Blinded_data_sets/dataset30_ 9779 .csv")
+
+## First the parametric sequencing 
+
+syn_para_object <- syn(
+  steam,
+  method = "parametric",
+  m = 1
+)
+
+syn_para <- syn_para_object$syn
+
+## CART synthesis
+set.seed(123)
+
+cart_data <- syn(
+  steam,
+  method = "cart",
+  m = 1
+)$syn
+
+head(cart_data)
+
+```
+
+## Now let us check the causal utility for CART
+
+```{r causal utlity}
+## Regression Adjustment
+
+real_reg <- glm(
+  Y ~ W + x1 + x2 + x3 + x4 + x5 + x6,
+  family = binomial,
+  data = steam
+)
+
+cart_reg <- glm(
+  Y ~ W + x1 + x2 + x3 + x4 + x5 + x6,
+  family = binomial,
+  data = cart_data
+)
+
+## Here we have done regression adjustmnent for the real and cart synthetic dataset
+
+real_OR <- exp(coef(real_reg)["W"])
+
+cart_OR <- exp(coef(cart_reg)["W"])
+
+comparison_OR <- data.frame(
+
+  Dataset = c("Original","CART"),
+
+  Odds_Ratio = c(real_OR, cart_OR)
+
+)
+
+comparison_OR
+
+## Both have a different odds ratio
+
+## Original	 7.381430			
+## CART	     5.635388
+
+
+real_CI <- exp(confint.default(real_reg)["W",])
+
+cart_CI <- exp(confint.default(cart_reg)["W",])
+
+CI_table <- data.frame(
+
+  Dataset = c("Original","CART"),
+
+  OR = c(real_OR, cart_OR),
+
+  Lower = c(real_CI[1], cart_CI[1]),
+
+  Upper = c(real_CI[2], cart_CI[2])
+
+)
+
+CI_table
+```
+## G computation
+
+```{r g formula}
+## G-computation
+
+estimate_ATE <- function(data){
+
+  model <- glm(
+
+    Y ~ W + x1 + x2 + x3 + x4 + x5 + x6,
+
+    family = binomial,
+
+    data = data
+
+  )
+
+  treated <- data
+  treated$W <- 1
+
+  untreated <- data
+  untreated$W <- 0
+
+  risk1 <- predict(
+    model,
+    newdata = treated,
+    type = "response"
+  )
+
+  risk0 <- predict(
+    model,
+    newdata = untreated,
+    type = "response"
+  )
+
+  mean(risk1 - risk0)
+
+}
+
+## ATE results 
+
+ATE_real <- estimate_ATE(steam)
+
+ATE_cart <- estimate_ATE(cart_data)
+
+ATE_results <- data.frame(
+
+  Dataset = c("Original","CART"),
+
+  ATE = c(ATE_real, ATE_cart)
+
+)
+
+ATE_results
+
+## Compare the absolute erros
+
+ATE_results$Absolute_Error <- c(
+
+  0,
+
+  abs(ATE_real - ATE_cart)
+
+)
+
+ATE_results
+
+## Here the absolute error is slightly big 
+```
+## IPTW
+
+```{r iptw}
+## IPTW
+
+estimate_IPTW <- function(data){
+
+  ps_model <- glm(
+
+    W ~ x1 + x2 + x3 + x4 + x5 + x6,
+
+    family = binomial,
+
+    data = data
+
+  )
+
+  ps <- predict(
+    ps_model,
+    type = "response"
+  )
+
+  weights <- ifelse(
+
+    data$W == 1,
+
+    1 / ps,
+
+    1 / (1 - ps)
+
+  )
+
+  outcome_model <- glm(
+
+    Y ~ W,
+
+    family = binomial,
+
+    weights = weights,
+
+    data = data
+
+  )
+
+  exp(coef(outcome_model)["W"])
+
+}
+
+## Comapte the IPTW weights
+
+iptw_real <- estimate_IPTW(steam)
+
+iptw_cart <- estimate_IPTW(cart_data)
+
+IPTW_table <- data.frame(
+
+  Dataset = c("Original","CART"),
+
+  IPTW_OR = c(iptw_real, iptw_cart)
+
+)
+
+IPTW_table
+```
+## PS score distirbutions
+
+```{r PS}
+real_ps_model <- glm(
+
+  W ~ x1 + x2 + x3 + x4 + x5 + x6,
+
+  family = binomial,
+
+  data = steam
+
+)
+
+steam$PS <- predict(
+  real_ps_model,
+  type = "response"
+)
+
+cart_ps_model <- glm(
+
+  W ~ x1 + x2 + x3 + x4 + x5 + x6,
+
+  family = binomial,
+
+  data = cart_data
+
+)
+
+cart_data$PS <- predict(
+  cart_ps_model,
+  type = "response"
+)
+
+## Plot
+
+
+ggplot() +
+
+  geom_density(
+
+    data = steam,
+
+    aes(PS, colour = "Original"),
+
+    linewidth = 1
+
+  ) +
+
+  geom_density(
+
+    data = cart_data,
+
+    aes(PS, colour = "CART"),
+
+    linewidth = 1
+
+  ) +
+
+  labs(
+
+    title = "Propensity Score Distribution",
+
+    x = "Propensity Score",
+
+    colour = ""
+
+  )
+```
+
+```{r final}
+causal_results <- data.frame(
+
+  Dataset = c("Original","CART"),
+
+  Regression_OR = c(real_OR, cart_OR),
+
+  IPTW_OR = c(iptw_real, iptw_cart),
+
+  Gcomp_ATE = c(ATE_real, ATE_cart)
+
+)
+
+causal_results
+```
+## Causal error framework
+
+```{r causal error}
+causal_error <- data.frame(
+
+  Measure = c(
+    "Regression OR",
+    "IPTW OR",
+    "G-computation ATE"
+  ),
+
+  Original = c(
+    7.381430,
+    4.994238,
+    0.2678132
+  ),
+
+  CART = c(
+    5.635388,
+    3.909962,
+    0.1884510
+  )
+
+)
+
+causal_error$Absolute_Error <-
+  abs(causal_error$Original - causal_error$CART)
+
+causal_error$Relative_Error <-
+  100 * causal_error$Absolute_Error /
+  causal_error$Original
+
+causal_error
+```
+The synthetic data does not reverse the direction of the causal effect.
+
+

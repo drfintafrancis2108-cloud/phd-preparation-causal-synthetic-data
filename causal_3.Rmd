@@ -1,0 +1,536 @@
+---
+title: "BART_causality preservation"
+author: "Finta_Francis_R_project"
+date: "2026-08-04"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library("bnlearn")
+library("readr")
+by_data <- read_csv("Downloads/Blinded_data_sets/dataset30_ 1222 .csv")
+
+head(by_data)
+
+## since we have ptud, we need to remiove it 
+
+bn_data <- by_data[, !names(by_data) %in% "ptid"]
+```
+## Cleaning an dwrangling the dataset
+
+```{r clean}
+library(dplyr)
+
+binary_vars <- names(
+bn_data)[
+sapply(bn_data,function(x)
+length(unique(x))==2)
+]
+
+binary_vars
+
+## Convert binary to factors
+
+bn_data[binary_vars] <- 
+  lapply(
+    bn_data[binary_vars],
+    factor
+  )
+
+str(bn_data) ## the binary variables, are changed to factor
+
+## Now we will paste the first 10 variables of X
+
+bn_small <- bn_data[,c(
+"Y",
+"W",
+paste0("x",1:10)
+)]
+
+
+dag <- hc(bn_small)
+
+plot(dag)
+
+## since there was no arrow from x1 to x10, let us see 
+
+cor_matrix <- cor(
+sapply(bn_small, as.numeric)
+)
+
+cor_matrix["Y",]
+
+```
+```{r white or blacklist}
+variables <- names(by_data)
+
+blacklist <- data.frame(. ## forbiding the relations
+  from = c(
+    "Y",
+    rep("Y", 50),
+    rep("W", 50)
+  ),
+  to = c(
+    "W",
+    paste0("x",1:50),
+    paste0("x",1:50)
+  )
+)
+
+whitelist <- data.frame(
+  from="W",
+  to="Y"
+) ## these arrows are allowed
+
+## DAG causal
+dag_causal <- hc(
+  bn_data,
+  whitelist = whitelist,
+  blacklist = blacklist,
+  score = "bic-cg"
+)
+
+plot(dag_causal)
+
+## Inspeacting DAG
+
+arcs(dag_causal)
+
+## Parent DAGS
+
+parents(dag_causal, "Y")
+```
+## Learn the parameters
+
+```{r paramteters}
+bn_causal_small <- bn_data[,c(
+"Y",
+"W",
+paste0("x",1:10)
+)]
+
+rm(blacklist, whitelist)
+predictors <- paste0("x", 1:10)
+ 
+blacklist <- rbind(
+    data.frame(from = "Y", to = "W"),
+    data.frame(from = rep("Y", length(predictors)),
+                to = predictors),
+     data.frame(from = rep("W", length(predictors)),
+                to = predictors)
+ )
+
+whitelist <- data.frame(
+     from = "W",
+     to = "Y"
+ )
+setdiff(
+     unique(c(blacklist$from, blacklist$to)),
+     names(bn_causal_small)
+ )
+
+dag_causal <- hc(
+     bn_causal_small,
+     whitelist = whitelist,
+     blacklist = blacklist,
+     score = "bic-cg" )
+
+plot(dag_causal)
+```
+## A DAG alone is not enoguh to tell which variables, depends on whic, So we need to establish probabilty statistics
+```{r fit}
+bn_causal_small <- as.data.frame(bn_causal_small)
+
+fit_bn <- bn.fit(
+    dag_causal,
+    data = bn_causal_small
+)
+
+fit_bn
+```
+## Now let us create a synthetic data 
+
+```{r syn}
+syn_bn <- rbn(
+  fit_bn, n=150
+)
+
+head(syn_bn)
+```
+##  Now let us check the stats utility
+```{r stats1}
+## prepare the datasets
+
+# Real data
+real_data <- bn_causal_small
+
+# Synthetic data generated from bnlearn
+synthetic_data <- syn_bn
+
+
+# Check variables
+names(real_data)
+names(synthetic_data)
+
+## Now check the means and SD
+
+continuous_vars <- names(real_data)[
+sapply(real_data, is.numeric)
+]
+
+binary_vars <- names(real_data)[
+sapply(real_data, function(x)
+length(unique(x)) == 2)
+]
+
+real_mean <- sapply(
+  real_data[continuous_vars],
+  mean
+)
+
+synthetic_mean <- sapply(
+  synthetic_data[continuous_vars],
+  mean
+)
+
+
+mean_comparison <- data.frame(
+  Variable = continuous_vars,
+  Real = real_mean,
+  Synthetic = synthetic_mean,
+  Difference = synthetic_mean - real_mean
+)
+
+mean_comparison
+
+sd_real <- sapply(real_data[continuous_vars], sd)
+sd_syn <- sapply(synthetic_data[continuous_vars], sd)
+
+sd_comparison <- data.frame(
+  Variable = continuous_vars,
+  Real = sd_real,
+  Synthetic = sd_syn,
+  Difference = sd_syn - sd_real
+)
+
+sd_comparison
+
+## corealation difference
+
+cor_real <- cor(real_data[continuous_vars])
+cor_syn <- cor(synthetic_data[continuous_vars])
+
+cor_diff <- cor_syn - cor_real
+
+cor_diff
+
+## Let us plot cor 
+
+library(corrplot)
+
+
+corrplot(
+  cor_real,
+  method="color",
+  title="Real data correlation"
+)
+
+
+corrplot(
+  cor_syn,
+  method="color",
+  title="Synthetic data correlation"
+)
+
+## mean absolute error
+
+mean_abs_cor_error <- mean(
+  abs(cor_diff)
+)
+
+
+mean_abs_cor_error ## 0.041, acceptable
+
+
+## Compare the distributions
+
+ks_results <- data.frame(
+  
+  Variable = continuous_vars,
+  
+  KS_pvalue = sapply(
+    continuous_vars,
+    function(x){
+      
+      ks.test(
+        real_data[[x]],
+        synthetic_data[[x]]
+      )$p.value
+      
+    }
+  )
+)
+
+
+ks_results
+```
+## Now let us also check the causal utlity
+
+```{r causal}
+real_data <- bn_causal_small
+syn_data <- synthetic_data
+
+real_data$W<- as.numeric(as.character(real_data$W))
+syn_data$W <- as.numeric(as.character(syn_data$W))
+
+model_real <- glm(
+  Y ~ W + x1+x2+x3+x4+x5+x6+x7+x8+x9+x10,
+  data=real_data,
+  family="binomial"
+)
+
+
+summary(model_real)
+
+model_syn <- glm(
+  Y ~ W + x1+x2+x3+x4+x5+x6+x7+x8+x9+x10,
+  data=syn_data,
+  family="binomial"
+)
+
+comparison_OR  <- data.frame(
+Dataset=c("Real","Synthetic"),
+OR=c(
+exp(coef(model_real)["W"]),
+exp(coef(model_syn)["W"])
+)
+)
+
+comparison_OR
+```
+```{r gcomputation}
+## G-computation
+
+## since the real data$W is numeric and synthetic data have it as factor, we will change both to numeric 
+
+synthetic_data$W <- as.numeric(as.character(synthetic_data$W))
+
+estimate_ATE <- function(data){
+
+  model <- glm(
+
+    Y ~ W + x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10,
+
+    family = binomial,
+
+    data = data
+
+  )
+
+
+  treated <- data
+ treated$W <- 1
+
+
+  untreated <- data
+  untreated$W <- 0
+
+
+  risk1 <- predict(
+    model,
+    newdata = treated,
+    type = "response"
+  )
+
+
+  risk0 <- predict(
+    model,
+    newdata = untreated,
+    type = "response"
+  )
+
+
+  mean(risk1 - risk0)
+
+}
+
+## ATE results 
+
+ATE_real <- estimate_ATE(real_data)
+
+ATE_bn <- estimate_ATE(synthetic_data)
+
+ATE_results <- data.frame(
+
+  Dataset = c("Original","Bayesian"),
+
+  ATE = c(ATE_real, ATE_bn)
+
+)
+
+ATE_results
+
+## Compare the absolute erros
+
+ATE_results$Absolute_Error <- c(
+
+  0,
+
+  abs(ATE_real - ATE_bn)
+
+)
+
+ATE_results
+
+## The Bayesian synthetic data did not fully preserve the causal effect of W on Y. The estimated causal effect shifted from a negative association in the original data to approximately null in the synthetic data.
+
+## The bayesian synthetic dataset had good statistical utlity , but poor causal utility, might be due to small sample size, the hc hill choose the best stats model, not the causal model, due to missed causal relations or inconsisitent ones
+```
+
+```{r iptw}
+## IPTW
+
+estimate_IPTW <- function(data){
+
+  ps_model <- glm(
+
+    W ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 +x9+x10,
+
+    family = binomial,
+
+    data = data
+
+  )
+
+  ps <- predict(
+    ps_model,
+    type = "response"
+  )
+
+  weights <- ifelse(
+
+    data$W == 1,
+
+    1 / ps,
+
+    1 / (1 - ps)
+
+  )
+
+  outcome_model <- glm(
+
+    Y ~ W,
+
+    family = binomial,
+
+    weights = weights,
+
+    data = data
+
+  )
+
+  exp(coef(outcome_model)["W"])
+
+}
+
+## Comapte the IPTW weights
+
+iptw_real <- estimate_IPTW(real_data)
+
+iptw_bn <- estimate_IPTW(synthetic_data)
+
+IPTW_table <- data.frame(
+
+  Dataset = c("Original","Bayesian"),
+
+  IPTW_OR = c(iptw_real, iptw_bn)
+
+)
+
+IPTW_table
+
+## IPTW showed the bayesian synthetic dataset showed inflated effcet, which might be due to PS score instabilities, or application of extreme weights
+```
+## Now let us compare the PS scores
+
+```{r ps}
+real_ps_model <- glm(
+
+  W ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 ,
+
+  family = binomial,
+
+  data = real_data
+
+)
+
+real_data$PS <- predict(
+  real_ps_model,
+  type = "response"
+)
+
+bayesian_ps_model <- glm(
+
+  W ~ x1 + x2 + x3 + x4 + x5 + x6 + x7 + x8 + x9 + x10 ,
+
+  family = binomial,
+
+  data = synthetic_data
+
+)
+
+synthetic_data$PS <- predict(
+  bayesian_ps_model,
+  type = "response"
+)
+
+## Plot
+
+
+ggplot() +
+
+  geom_density(
+
+    data = real_data,
+
+    aes(PS, colour = "Original"),
+
+    linewidth = 1
+
+  ) +
+
+  geom_density(
+
+    data = synthetic_data,
+
+    aes(PS, colour = "Ctree"),
+
+    linewidth = 1
+
+  ) +
+
+  labs(
+
+    title = "Propensity Score Distribution",
+
+    x = "Propensity Score",
+
+    colour = ""
+
+  )
+
+```
+```{r causal results}
+causal_results <- data.frame(
+
+  Dataset = c("Original","Bayesian"),
+
+  IPTW_OR = c(iptw_real, iptw_bn),
+
+  Gcomp_ATE = c(ATE_real, ATE_bn)
+
+)
+
+causal_results
+```

@@ -1,0 +1,429 @@
+---
+title: "Privacy utility trade off"
+author: "Finta_Francis_R_project"
+date: "2026-08-09"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+
+library(synthpop)
+
+library(partykit)
+
+library(pROC)
+
+library(ggplot2)
+
+## Load the dataset 
+
+library(readr)
+steam <- read_csv("~/Downloads/Blinded_data_sets/dataset30_ 9779 .csv")
+
+## Ctree synthesis
+set.seed(123)
+
+n <- nrow(steam)
+
+train_id <- sample(
+  1:n,
+  size = round(0.8 * n)
+)
+
+train_data <- steam[train_id, ]
+test_data  <- steam[-train_id, ]
+
+## Now create a ctree syn dataset
+
+set.seed(123)
+
+ctree_data <- syn(
+  train_data,
+  method = "ctree",
+  m = 1
+)$syn
+
+## Now you have members which are train dataset 
+## Non members - test dataset 
+## synthetic dataset - ctree_data 
+
+## Can I distinguish train_data from test_data using the synthetic dataset?
+## This is the privacy question?
+
+colnames(steam)
+## So we got variables , we will assign these to a variable var 
+
+vars <- c("Y", "x1", "x2", "x3", "x4", "x5", "x6", "W") ## ptid is removed 
+
+## Now we will assign members, nonmembers, synthetic 
+
+members <- train_data[, vars]
+
+nonmembers <- test_data[, vars]
+
+synthetic <- ctree_data[, vars]
+
+head(train_data$ptid)
+head(ctree_data$ptid)
+## Now we will check the structure of the dataset
+str(steam)
+```
+## Now we will calculate the distance between the variables 
+
+```{r privacy}
+library(cluster)
+
+members_dist <- members
+nonmembers_dist <- nonmembers
+synthetic_dist <- synthetic
+
+binary_vars <- c("Y", "x5", "W")
+
+members_dist[binary_vars] <- lapply(
+  members_dist[binary_vars],
+  factor
+)
+
+nonmembers_dist[binary_vars] <- lapply(
+  nonmembers_dist[binary_vars],
+  factor
+)
+
+synthetic_dist[binary_vars] <- lapply(
+  synthetic_dist[binary_vars],
+  factor
+)
+
+
+## check again
+str(members_dist) ## we have only numeric and factors here 
+
+member_dist <- daisy(
+  members_dist,
+  metric = "gower"
+)
+
+nonmember_dist <- daisy(
+  nonmembers_dist,
+  metric = "gower"
+)
+## Now we will bind them
+
+all_data <- rbind(members, nonmembers, synthetic)
+
+
+gower_dist <- daisy(
+  all_data,
+  metric = "gower"
+)
+
+gower_matrix <- as.matrix(gower_dist)
+
+n_members <- nrow(members)
+n_nonmembers <- nrow(nonmembers)
+n_synthetic <- nrow(synthetic)
+
+member_rows <- 1:n_members
+
+nonmember_rows <- 
+  (n_members + 1):(n_members + n_nonmembers)
+
+synthetic_rows <- 
+  (n_members + n_nonmembers + 1):
+  (n_members + n_nonmembers + n_synthetic)
+
+## Finding closest record 
+
+member_min_dist <- apply(
+  gower_matrix[
+    member_rows,
+    synthetic_rows,
+    drop = FALSE
+  ],
+  1,
+  min
+)
+
+nonmember_min_dist <- apply(
+  gower_matrix[
+    nonmember_rows,
+    synthetic_rows,
+    drop = FALSE
+  ],
+  1,
+  min
+)
+
+
+member_min_dist
+nonmember_min_dist
+
+## Ploting 
+
+privacy_scores <- data.frame(
+  distance = c(
+    member_min_dist,
+    nonmember_min_dist
+  ),
+  membership = c(
+    rep("Member", length(member_min_dist)),
+    rep("Non-member", length(nonmember_min_dist))
+  )
+)
+
+ggplot(
+  privacy_scores,
+  aes(
+    x = distance,
+    fill = membership
+  )
+) +
+  geom_density(alpha = 0.4) +
+  labs(
+    title = "Distance to Nearest Synthetic Record",
+    x = "Minimum Gower distance",
+    y = "Density",
+    fill = "Group"
+  )
+```
+## plot suggests that this strategy could work to some extent, because members tend to have smaller distances.
+## But because the curves overlap heavily, the attacker will make many mistakes.
+
+## MIA-AUC 
+
+```{r MIA}
+attack_data <- data.frame(
+  membership = c(
+    rep(1, length(member_min_dist)),
+    rep(0, length(nonmember_min_dist))
+  ),
+  score = c(
+    -member_min_dist,
+    -nonmember_min_dist
+  )
+)
+
+library(pROC)
+
+mia_roc <- roc(
+  response = attack_data$membership,
+  predictor = attack_data$score
+)
+
+auc(mia_roc)
+
+## Plot 
+
+plot(
+  mia_roc,
+  main = "Membership Inference Attack ROC Curve",
+  xlab = "False Positive Rate (1 - Specificity)",
+  ylab = "True Positive Rate (Sensitivity)",
+  legacy.axes = TRUE
+)
+
+```
+## Attacker advantage 
+
+```{r AA}
+best <- coords(
+  mia_roc,
+  x = "best",
+  best.method = "youden",
+  ret = c(
+    "threshold",
+    "sensitivity",
+    "specificity"
+  )
+)
+
+best
+
+## calculate TPR, FPR, AA 
+
+TPR <- best["sensitivity"]
+
+FPR <- 1 - best["specificity"]
+
+attack_advantage <- TPR - FPR
+
+attack_advantage
+```
+## Calculating DCR
+```{r DCR}
+synthetic_min_dist <- apply(
+  gower_matrix[
+    synthetic_rows,
+    member_rows,
+    drop = FALSE
+  ],
+  1,
+  min
+)
+
+mean(synthetic_min_dist)
+
+## Higher DCR - better privacy
+
+## DCR tries to find how close is synthetic data to the training dataset
+
+```
+## Calculate the NNDR
+```{r NNDR}
+synthetic_to_members <- gower_matrix[
+  synthetic_rows,
+  member_rows,
+  drop = FALSE
+] ## assign the matrix 
+
+## Choose the closest two training records
+
+synthetic_nndr <- apply(
+  synthetic_to_members,
+  1,
+  function(x) {
+    two_closest <- sort(x)[1:2]
+    two_closest[1] / two_closest[2]
+  }
+)
+
+synthetic_nndr
+
+mean(synthetic_nndr)
+```
+## Since d 1 ≤d 2 , NNDR normally lies between 0 and 1.
+
+## NNDR close to 0 → nearest training record is much closer than the second-nearest → potentially more suspicious.
+## NNDR close to 1 → nearest and second-nearest records are similarly distant → less evidence that one particular training record is unusually close.
+
+## Therefore, 0.8011 is relatively high, meaning that, on average, the closest and second-closest training records are not extremely different in distance.
+
+```{r nndr2}
+quantile(
+  synthetic_nndr,
+  probs = c(0, 0.01, 0.05, 0.10, 0.25, 0.50, 0.75, 0.90, 0.95, 0.99, 1),
+  na.rm = TRUE
+) ## to check what happens in the tail
+```
+## IMS
+```{r ims}
+n_identical <- sum(synthetic_min_dist == 0)
+
+n_identical
+```
+## none of your synthetic records is exactly identical to a record in the training/member dataset.
+
+## Now let us compare 
+
+```{r compare}
+# ============================================
+# SYNTHETIC -> NON-MEMBER DISTANCES
+# ============================================
+
+synthetic_to_nonmembers <- gower_matrix[
+  synthetic_rows,
+  nonmember_rows,
+  drop = FALSE
+]
+
+
+# ============================================
+# DCR
+# ============================================
+
+synthetic_min_dist_nonmember <- apply(
+  synthetic_to_nonmembers,
+  1,
+  min
+)
+
+mean_dcr_nonmember <- mean(
+  synthetic_min_dist_nonmember
+)
+
+dcr_5_train <- quantile(
+  synthetic_min_dist,
+  0.05,
+  na.rm = TRUE
+)
+
+dcr_5_nonmember <- quantile(
+  synthetic_min_dist_nonmember,
+  0.05,
+  na.rm = TRUE
+)
+
+
+# ============================================
+# NNDR
+# ============================================
+
+synthetic_nndr_nonmember <- apply(
+  synthetic_to_nonmembers,
+  1,
+  function(x) {
+
+    two_closest <- sort(x)[1:2]
+
+    if (two_closest[2] == 0) {
+      return(NA_real_)
+    }
+
+    two_closest[1] / two_closest[2]
+  }
+)
+
+mean_nndr_nonmember <- mean(
+  synthetic_nndr_nonmember,
+  na.rm = TRUE
+)
+
+nndr_5_train <- quantile(
+  synthetic_nndr,
+  0.05,
+  na.rm = TRUE
+)
+
+nndr_5_nonmember <- quantile(
+  synthetic_nndr_nonmember,
+  0.05,
+  na.rm = TRUE
+)
+
+
+# ============================================
+# IMS
+# ============================================
+
+tolerance <- 1e-10
+
+n_identical_nonmember <- sum(
+  synthetic_min_dist_nonmember <= tolerance
+)
+
+
+# ============================================
+# PRINT RESULTS
+# ============================================
+
+cat("DCR - mean training:", mean(synthetic_min_dist), "\n")
+cat("DCR - mean non-member:", mean_dcr_nonmember, "\n\n")
+
+cat("DCR - 5th percentile training:", dcr_5_train, "\n")
+cat("DCR - 5th percentile non-member:", dcr_5_nonmember, "\n\n")
+
+cat("NNDR - mean training:", mean(synthetic_nndr, na.rm = TRUE), "\n")
+cat("NNDR - mean non-member:", mean_nndr_nonmember, "\n\n")
+
+cat("NNDR - 5th percentile training:", nndr_5_train, "\n")
+cat("NNDR - 5th percentile non-member:", nndr_5_nonmember, "\n\n")
+
+cat("IMS - training:", n_identical, "\n")
+cat("IMS - non-member:", n_identical_nonmember, "\n")
+```
+## The synthetic data has a stronger proximity to the training data than to the holdout data according to the DCR and NNDR comparisons.
+
+## That can be evidence of potential privacy leakage/memorization, but it is not proof of an actual privacy breach.

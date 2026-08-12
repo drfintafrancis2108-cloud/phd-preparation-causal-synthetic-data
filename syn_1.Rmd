@@ -1,0 +1,620 @@
+---
+title: "STEAM_project"
+author: "Finta_Francis_R_project"
+date: "2026-07-29"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+##Loading the dataset
+library(readr)
+steam<- read_csv("Downloads/Blinded_data_sets/dataset30_ 9779 .csv")
+
+view(steam)
+
+## Now let us explore the variables, look into what we have in out dataset
+
+summary(steam)
+str(steam)
+
+## This gave us the information that whether the variables are binary or continuous, ot characters etc
+
+sapply(steam,class)
+## Now we know all are numeric 
+
+ncol(steam)
+## 9 columns with one ptid, 6 x variables, on y and one w
+
+names(steam)
+
+## [1] "ptid" "Y"    "x1"   "x2"   "x3"   "x4"   "x5"   "x6"   "W"   
+
+colSums(is.na(steam))
+## to check whether they have na
+
+```
+
+Now let us look into the correlations, the distributions in these variables.
+
+```{r chunk2}
+binary_vars <- names(steam)[
+  sapply(steam, function(x) length(unique(x)) == 2)
+]
+
+continuous_vars <- names(steam)[
+  sapply(steam, function(x) length(unique(x)) > 2)
+]
+
+binary_vars
+
+## The binary variables are "Y"  "x5" "W" 
+
+continuous_vars
+## continuous variables are : "ptid" "x1"   "x2"   "x3"   "x4"   "x6" 
+
+for (i in continuous_vars) {
+  hist(steam[[i]],
+       main=i,
+       xlab=i,
+       col="lightblue",
+       border="white")
+  
+  
+}
+
+for (i in binary_vars) {
+  cat("\n====================\n")
+  cat(i,"\n")
+  print(table(steam[[i]]))
+  print(prop.table(table(steam[[i]])))
+}
+```
+Now we have looked into the distributions ans prop tables of the variables.
+Let us create the models.
+
+```{r model}
+
+model1<- glm(Y~ W +x1+x2+x3+x4+x5+x6,data = steam)
+
+summary(model1)
+
+## we got the AIC AIC: 146.6
+
+confint(model1)
+
+## Residuals
+
+deviance_res <- residuals(model1, type = "deviance")
+
+summary(deviance_res)
+
+qqnorm(deviance_res)
+
+plot(fitted(model1),
+     deviance_res,
+     xlab = "Predicted Probability",
+     ylab = "Deviance Residuals",
+     main = "Residuals vs Fitted")
+
+
+
+## Now let us look into the CI for the odds ratio
+CI <- exp(confint(model1))
+OR <- exp(coef(model1))
+pvals <- summary(model1)$coefficients[,4]
+
+
+results <- data.frame(
+  Variable = rownames(summary(model1)$coefficients),
+  Coefficient = coef(model1),
+  Odds_Ratio = exp(coef(model1)),
+  CI_Lower = exp(confint.default(model1)[,1]),
+  CI_Upper = exp(confint.default(model1)[,2]),
+  P_value = summary(model1)$coefficients[,4]
+)
+
+results
+
+```
+Now let us create the discrimination and calibration for these plots
+
+```{r model measures}
+
+library(pROC)
+
+pred_prob <- predict(model1, type = "response")
+
+roc <- roc(steam$Y,pred_prob)
+
+plot(roc,
+     col = "blue",
+     lwd = 3,
+     main = "ROC Curve - Model 1")
+
+auc(roc) ## 0.8042
+
+```
+
+
+Now let us create a model 2
+
+```{r model2}
+
+library(glmnet)
+x <-model.matrix(
+  Y ~ W + x1 + x2 + x3 + x4 + x5 + x6,
+  data = steam
+)[,-1] ## we removed -1 as glm automatically adds this
+
+y <- steam$Y
+
+model2 <- glmnet(
+  x,
+  y,
+  family = "binomial",
+  alpha = 1
+)
+
+## ploting 
+plot(model2,
+     xvar = "lambda",
+     label = TRUE)
+
+## Optimal validation
+
+set.seed(123)
+
+cv_lasso <- cv.glmnet(
+  x,
+  y,
+  family = "binomial",
+  alpha = 1,
+  nfolds = 10
+)
+
+plot(cv_lasso)
+
+# Predictions
+lasso_prob <- predict(
+  cv_lasso,
+  newx = x,
+  s = "lambda.min",
+  type = "response"
+)
+
+# ROC
+roc_lasso <- roc(y, as.vector(lasso_prob))
+
+plot(roc_lasso,
+     col = "red",
+     lwd = 3)
+
+auc(roc_lasso)
+
+```
+Sequential Parametric Synthetic Data Generation
+
+```{r synthetic 1}
+## Let us make a synthetic data using the parametric synthetic Data genertaion 
+
+# Stage 1: Parametric Sequential Synthetic Data Generation
+
+
+set.seed(123)
+
+# Number of observations
+
+n <- nrow(steam)
+
+# Empty synthetic dataset
+
+syn <- data.frame(
+  ptid = 1:n
+)
+
+# STEP 1: Generate x1
+
+mean_x1 <- mean(steam$x1, na.rm = TRUE)
+sd_x1   <- sd(steam$x1, na.rm = TRUE)
+
+syn$x1 <- rnorm(
+  n,
+  mean = mean_x1,
+  sd = sd_x1
+)
+
+# STEP 2: Generate x2 | x1
+
+model_x2 <- lm(x2 ~ x1, data = steam)
+
+pred_x2 <- predict(model_x2, newdata = syn)
+
+sigma_x2 <- summary(model_x2)$sigma
+
+syn$x2 <- pred_x2 +
+  rnorm(n, mean = 0, sd = sigma_x2)
+
+# STEP 3: Generate x3 | x1 + x2
+
+model_x3 <- lm(x3 ~ x1 + x2, data = steam)
+
+pred_x3 <- predict(model_x3, newdata = syn)
+
+sigma_x3 <- summary(model_x3)$sigma
+
+syn$x3 <- pred_x3 +
+  rnorm(n, mean = 0, sd = sigma_x3)
+
+# STEP 4: Generate x4 | x1 + x2 + x3
+
+model_x4 <- lm(x4 ~ x1 + x2 + x3, data = steam)
+
+pred_x4 <- predict(model_x4, newdata = syn)
+
+sigma_x4 <- summary(model_x4)$sigma
+
+syn$x4 <- pred_x4 +
+  rnorm(n, mean = 0, sd = sigma_x4)
+
+# STEP 5: Generate x5 | x1 + x2 + x3 + x4
+
+model_x5 <- glm(
+  x5 ~ x1 + x2 + x3 + x4,
+  family = binomial,
+  data = steam
+)
+
+prob_x5 <- predict(
+  model_x5,
+  newdata = syn,
+  type = "response"
+)
+
+syn$x5 <- rbinom(
+  n,
+  size = 1,
+  prob = prob_x5
+)
+
+# STEP 6: Generate x6 | x1 + x2 + x3 + x4 + x5
+
+model_x6 <- lm(
+  x6 ~ x1 + x2 + x3 + x4 + x5,
+  data = steam
+)
+
+pred_x6 <- predict(
+  model_x6,
+  newdata = syn
+)
+
+sigma_x6 <- summary(model_x6)$sigma
+
+syn$x6 <- pred_x6 +
+  rnorm(n, mean = 0, sd = sigma_x6)
+
+# STEP 7: Generate Treatment W
+
+model_W <- glm(
+  W ~ x1 + x2 + x3 + x4 + x5 + x6,
+  family = binomial,
+  data = steam
+)
+
+prob_W <- predict(
+  model_W,
+  newdata = syn,
+  type = "response"
+)
+
+syn$W <- rbinom(
+  n,
+  size = 1,
+  prob = prob_W
+)
+
+# STEP 8: Generate Outcome Y
+
+model_Y <- glm(
+  Y ~ W + x1 + x2 + x3 + x4 + x5 + x6,
+  family = binomial,
+  data = steam
+)
+
+prob_Y <- predict(
+  model_Y,
+  newdata = syn,
+  type = "response"
+)
+
+syn$Y <- rbinom(
+  n,
+  size = 1,
+  prob = prob_Y
+)
+
+
+## synthetic dataset
+
+str(syn)
+
+names(syn)
+```
+Does the synthetic dataset (syn) preserve the important characteristics of the original dataset (d_steam)?
+
+```{r check}
+## dimensions
+
+dim(steam)
+dim(syn)
+
+## Both have same , 150 observations for 9 variables 
+
+## compare the mean and std deviations
+
+real_summary <- data.frame(
+  Variable = c("x1","x2","x3","x4","x6"),
+  Mean = sapply(steam[,c("x1","x2","x3","x4","x6")], mean),
+  SD = sapply(steam[,c("x1","x2","x3","x4","x6")], sd)
+)
+
+syn_summary <- data.frame(
+  Variable = c("x1","x2","x3","x4","x6"),
+  Mean = sapply(syn[,c("x1","x2","x3","x4","x6")], mean),
+  SD = sapply(syn[,c("x1","x2","x3","x4","x6")], sd)
+)
+
+real_summary
+
+syn_summary
+
+## Now let us chacke the binary variables
+
+prop.table(table(steam$x5))
+prop.table(table(syn$x5))
+
+prop.table(table(steam$W))
+prop.table(table(syn$W))
+
+prop.table(table(steam$Y))
+prop.table(table(syn$Y))
+
+## Npw let us compare the corelations
+
+real_cor <- cor(
+  steam[,c("x1","x2","x3","x4","x6")]
+)
+
+syn_cor <- cor(
+  syn[,c("x1","x2","x3","x4","x6")]
+)
+
+round(real_cor,2)
+
+round(syn_cor,2)
+```
+```{r check2}
+par(mfrow=c(2,2))
+
+hist(steam$x1,
+     main="Real x1")
+
+hist(syn$x1,
+     main="Synthetic x1")
+
+hist(steam$x2,
+     main="Real x2")
+
+hist(syn$x2,
+     main="Synthetic x2")
+
+par(mfrow=c(1,1))
+
+```
+```{r check3}
+plot(
+  density(steam$x1),
+  lwd=2,
+  main="Density of x1"
+)
+
+lines(
+  density(syn$x1),
+  col="red",
+  lwd=2
+)
+
+legend(
+  "topright",
+  legend=c("Real","Synthetic"),
+  col=c("black","red"),
+  lwd=2
+)
+```
+```{r check3}
+
+real_model <- glm(
+Y~W+x1+x2+x3+x4+x5+x6,
+family=binomial,
+data=steam
+)
+
+syn_model <- glm(
+Y~W+x1+x2+x3+x4+x5+x6,
+family=binomial,
+data=syn
+)
+
+real_pred <- predict(
+real_model,
+type="response"
+)
+
+syn_pred <- predict(
+syn_model,
+type="response"
+)
+
+prop.table(table(real_pred,syn_pred))
+
+```
+
+Now let us compare discrimination
+
+```{r check3}
+library(pROC)
+
+real_auc <- roc(
+steam$Y,
+real_pred
+)
+
+syn_auc <- roc(
+syn$Y,
+syn_pred
+)
+
+auc(real_auc)
+
+auc(syn_auc)
+
+
+## Now let us overlay the curves
+
+plot(
+real_auc,
+col="blue",
+lwd=2,
+main="ROC Curves"
+)
+
+plot(
+syn_auc,
+add=TRUE,
+col="red",
+lwd=2
+)
+
+legend(
+"bottomright",
+legend=c("Real","Synthetic"),
+col=c("blue","red"),
+lwd=2
+)
+```
+Now let us create a synthetic model with CART
+
+```{r CART}
+library(synthpop)
+
+syn_data<- syn(steam, m=1, visit.sequence = c("x1","x2","x3","x4","x5","x6"), method = "cart", "cart", "cart", "cart","")
+
+syn_data$predictor.matrix
+
+## some features we found in the package
+
+## m=0, gives , the predict.mtrix
+
+##  predict.matric[W,x1] <- 0, gives the x1 removed form the prediction of variable W
+
+
+## Now let us compare both the models.
+
+head(syn_data)
+
+
+```
+```{r checkmodel2}
+
+syn_cart <- syn_data$syn
+
+real_model <- glm(
+Y~W+x1+x2+x3+x4+x5+x6,
+family=binomial,
+data=steam
+)
+
+syn_model2 <- glm(
+Y~W+x1+x2+x3+x4+x5+x6,
+family=binomial,
+data=syn_cart
+)
+
+real_pred <- predict(
+real_model,
+type="response"
+)
+
+syn_pred2 <- predict(
+syn_model2,
+type="response"
+)
+
+prop.table(table(real_pred,syn_pred))
+
+```
+
+Now let us compare discrimination
+
+```{r check3}
+library(pROC)
+
+real_auc <- roc(
+steam$Y,
+real_pred
+)
+
+syn_auc2 <- roc(
+syn_cart$Y,
+syn_pred2
+)
+
+auc(real_auc)
+
+auc(syn_auc2)
+
+
+## Now let us overlay the curves
+
+plot(
+real_auc,
+col="blue",
+lwd=2,
+main="ROC Curves"
+)
+
+plot(
+syn_auc2,
+add=TRUE,
+col="red",
+lwd=2
+)
+
+legend(
+"bottomright",
+legend=c("Real","Synthetic"),
+col=c("blue","red"),
+lwd=2
+)
+```
+
+Now we will do a sequential comparison
+
+```{r checkseq}
+set.seed(17914709)
+
+syn_data <- syn(
+  steam,
+  method = "cart",
+  m = 5,
+  visit.sequence = c(
+    "x1","x2","x3","x4","x5","x6","W","Y"
+  )
+)
+
+compare(syn_data, steam)
+```
+
+Now let us think about  

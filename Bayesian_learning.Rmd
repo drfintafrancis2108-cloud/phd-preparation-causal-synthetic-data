@@ -1,0 +1,142 @@
+---
+title: "Learning Bayesian Network with "bnlearn"
+author: "Finta_Francis_R_project"
+date: "2026-08-07"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(bnlearn)
+
+data("learning.test")
+
+bn_data <- learning.test
+
+
+
+bn.gs <- gs(learning.test)
+bn.gs
+
+plot(bn.gs)
+
+## This is a constrain based algortihm
+
+
+bn2 <- iamb(learning.test)
+bn2
+plot(bn2)
+bn3 <- fast.iamb(learning.test)
+plot(bn3)
+bn4 <- inter.iamb(learning.test)
+plot(bn4)
+
+## Here we can see all the algortihms came with the same bayesian netwrok
+## we can also use the compare function 
+
+compare(bn.gs, bn2)
+compare(bn2, bn3)
+compare(bn.gs, bn4)
+
+## Everything yileds the same results
+
+## Now let us compare this from the score based algorithm
+bn.hc <- hc(learning.test, score = "aic")
+
+plot(bn.hc)
+
+compare(bn.gs,bn.hc)
+## Now the function differs
+
+bn.hc2<- hc(learning.test, score = "bic")
+bn.hc2
+
+par(mfrow = c(1, 2))
+plot(bn.gs, main = "Constraint-based algorithms", highlight = c("A", "B"))
+plot(bn.hc, main = "Hill-Climbing", highlight = c("A", "B"))
+
+## If we have prior information about the variables, we can whitelist or balcklist them.
+
+bn.AB <- gs(learning.test, blacklist = c("B", "A"))
+par(mfrow = c(1, 2))
+plot(bn.gs, main = "Constraint-based algorithms", highlight = c("A", "B"))
+plot(bn.AB, main = "constrain-based", highlight = c("A", "B"))
+## Here in the inital the A-b, relation ship is blacklisted to A towards B
+
+bn.AB1 <- gs(learning.test, whitelist = c("B", "A"))
+par(mfrow = c(1, 2))
+plot(bn.AB, main = "Constraint-based algorithms balcklisted", highlight = c("A", "B"))
+plot(bn.AB1, main = "constrain-based algrotihm whitelistes", highlight = c("A", "B"))
+
+## Now we can see the direction of arro changed from B towards A
+
+# 3. Text representation
+modelstring(bn.AB1)
+modelstring(bn.AB)
+# 4. List edges
+arcs(bn.AB)
+arcs(bn.AB1)
+
+# 5. Parents
+parents(bn.AB1, "A")
+parents(bn.AB1,"B")
+
+## helps to identify the parent nodes
+
+# 6. Children
+children(bn.AB1, "A")
+
+# 7. Markov blanket
+mb(bn.AB1, "A")
+
+# 8. Adjacency matrix
+amat(bn.AB)
+
+# 9. Check DAG properties
+acyclic(bn.AB1) ## Helps to check tha acyclicity in the created DAG
+directed(bn.AB1)
+
+## Other finction we need are :
+##set.arc(dag, from = "A" , to = "B")
+##remove.arc(dag,from = "A" , to = "B")
+##reverse.arc(dag,from = "A" , to = "B")
+
+#setting debug = true
+
+bn.gs1<- gs(learning.test, debug = TRUE) ## gives you the inside flow of the algorith 
+
+bn.pc<- pc.stable(learning.test, debug = TRUE)
+```
+## Let us create some practical flow with alarm.
+
+```{r alarm}
+data("alarm")
+alm <- alarm
+str(alm) ## this is a dataset of 2000 obs with 37 variables, all factors with levels ranging from 2 to 4
+
+alarm.gs <- gs(alarm)
+alarm.iamb <- iamb(alarm)
+alarm.fast.iamb <- fast.iamb(alarm)
+alarm.inter.iamb <- inter.iamb(alarm)
+alarm.mmpc <- mmpc(alarm)
+alarm.hc <- hc(alarm, score = "bic")
+
+dag <- empty.graph(names(alarm)) ## This creates a graph, but no relation in these variables
+
+modelstring(dag) <- paste("[HIST|LVF][CVP|LVV][PCWP|LVV][HYP][LVV|HYP:LVF]",
+ "[LVF][STKV|HYP:LVF][ERLO][HRBP|ERLO:HR][HREK|ERCA:HR][ERCA][HRSA|ERCA:HR]",
+ "[ANES][APL][TPR|APL][ECO2|ACO2:VLNG][KINK][MINV|INT:VLNG][FIO2]",
+ "[PVS|FIO2:VALV][SAO2|PVS:SHNT][PAP|PMB][PMB][SHNT|INT:PMB][INT]",
+ "[PRSS|INT:KINK:VTUB][DISC][MVS][VMCH|MVS][VTUB|DISC:VMCH]",     "[VLNG|INT:KINK:VTUB][VALV|INT:VLNG][ACO2|VALV][CCHL|ACO2:ANES:SAO2:TPR]",
+ "[HR|CCHL][CO|HR:STKV][BP|CO:TPR]", sep = "")
+
+alarm.gs <- gs(alarm)
+plot(alarm.gs)
+ alarm.gs2 <- gs(alarm,test = "x2")
+ plot(alarm.gs2)
+alarm.mc <- gs(alarm, test = "mc-x2")
+
+```
+
+
