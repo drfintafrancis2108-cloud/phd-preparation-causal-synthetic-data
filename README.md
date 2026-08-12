@@ -86,7 +86,7 @@ I have developed a methodological handbook as part of my preparation. It current
    - Causal graphs
    - Distinguishing statistical similarity from causal similarity
 
-### 📄 Handbook
+### Handbook
 
 The complete handbook is available here:
 
@@ -96,7 +96,7 @@ The handbook is a living document and will be updated as my methodological prepa
 
 ---
 
-# 💻 R Implementations
+# R Implementations
 
 The repository contains practical R implementations corresponding to the methodological concepts studied in the handbook.
 
